@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# apk.sh v1.1
+# apk.sh v1.1.1
 # author: ax - github.com/ax
 #
 # -----------------------------------------------------------------------------
@@ -40,7 +40,7 @@
 # -----------------------------------------------------------------------------
 
 
-VERSION="1.1"
+VERSION="1.1.1"
 echo -e "[*] \033[1mapk.sh v$VERSION \033[0m"
 
 APK_SH_HOME="${HOME}/.apk.sh"
@@ -233,7 +233,7 @@ apk_build(){
 	BUILD_CMD_OPTS="$2"
 	BUILD_CMD_START="java -jar $APKTOOL_PATH b -d "
 	BUILD_CMD="$BUILD_CMD_START $APK_DIR $BUILD_CMD_OPTS"
-	APK_NAME=`echo $BUILD_CMD_OPTS | grep -Po "\-o \K.*?(?= )"`
+	APK_NAME=`echo "$BUILD_CMD_OPTS" | grep -Po "\-o \K.*?(?= )"`
 	if [ -z $APK_NAME ]; then
 		APK_NAME="$APK_DIR.apk"
 	fi
@@ -502,7 +502,7 @@ apk_patch(){
         fi #end NO_RES
     fi #end NO_DIS if
 
-	APKTOOL_BUILD_OPTS="-o $APK_DIR.gadget.apk --use-aapt2"
+	APKTOOL_BUILD_OPTS="-o $APK_DIR.gadget.apk"
 	APKTOOL_BUILD_OPTS="$APKTOOL_BUILD_OPTS $BUILD_OPTS"
 	apk_build "$APK_DIR" "$APKTOOL_BUILD_OPTS"
 	echo "[>] Bye!"
@@ -541,7 +541,8 @@ apk_pull(){
 			print_ $i
 			APK_NAME=$i
 			APK_DIR=${APK_NAME%.apk} # bash 3.x compliant xD
-			APKTOOL_DECODE_OPTS="--resource-mode dummy -o $APK_DIR 1>/dev/null"
+			#APKTOOL_DECODE_OPTS="--resource-mode dummy -o $APK_DIR 1>/dev/null"
+			APKTOOL_DECODE_OPTS="-o $APK_DIR 1>/dev/null"
 			apk_decode "$APK_NAME" "$APKTOOL_DECODE_OPTS"
 		done
 		# Walk the extracted APKs dirs and copy files and dirs to the base APK dir. 
@@ -606,10 +607,12 @@ apk_pull(){
 		# Disable APK splitting in the base manifest file, if it’s not there already done.        
 		MANIFEST_PATH="$SPLIT_DIR/base/AndroidManifest.xml"
 		echo "[>] Disabling APK splitting :"
-  		echo "[>] - Make sure isSplitRequired is set to false"
+  		echo "[>] Make sure isSplitRequired is set to false"
 		sed -i "s/android:isSplitRequired=\"true\"/android:isSplitRequired=\"false\"/g" $MANIFEST_PATH
-  		echo "[>] - Make sure com.android.vending.splits.required is set to false"
+  		echo "[>] Make sure com.android.vending.splits.required is set to false"
   		sed -i "/com.android.vending.splits.required/s/true/false/g" $MANIFEST_PATH
+  		echo "[>] Make sure to remove other split attributes..."
+        sed -i 's/ android:requiredSplitTypes="[^"]*"//g; s/ android:splitTypes="[^"]*"//g' "$MANIFEST_PATH"
 		echo "[>] Done!"
 		#	Set android:extractNativeLibs="true" in the Manifest if you experience any adb: failed to install file.gadget.apk:
 		#	Failure [INSTALL_FAILED_INVALID_APK: Failed to extract native libraries, res=-2]
@@ -618,7 +621,7 @@ apk_pull(){
 		sed -i "s/android:extractNativeLibs=\"false\"/android:extractNativeLibs=\"true\"/g" $MANIFEST_PATH
 		echo "[>] Done!"
 		# Rebuild the base APK 
-		APKTOOL_BUILD_OPTS="-o file.single.apk --use-aapt2"
+		APKTOOL_BUILD_OPTS="-o file.single.apk "
 		APKTOOL_BUILD_OPTS="$APKTOOL_BUILD_OPTS $BUILD_OPTS"
 		apk_build "$SPLIT_DIR/base" "$APKTOOL_BUILD_OPTS"
 		echo "[>] Bye!"
@@ -646,7 +649,7 @@ apk_rename(){
 	# Note: https://github.com/iBotPeaches/Apktool/issues/1753
 	# renameManifestPackage is not designed for manual package name changes, but can be useful in some situations.
 	sed -i "s/renameManifestPackage:.*/renameManifestPackage: $PACKAGE/g" $APKTOOL_YML_PATH
-	APKTOOL_BUILD_OPTS="-o file.renamed.apk --use-aapt2"
+	APKTOOL_BUILD_OPTS="-o file.renamed.apk"
 	APKTOOL_BUILD_OPTS="$APKTOOL_BUILD_OPTS $BUILD_OPTS"
 	# Silently build
 	apk_build "$APK_DIR" "$APKTOOL_BUILD_OPTS 1>/dev/null"
@@ -677,8 +680,7 @@ if [ ! -z $1 ]&&[ $1 == "build" ]; then
 	#
 	APK_DIR=$2
 	exit_if_not_exist "$APK_DIR"
-	APKTOOL_BUILD_OPTS="-o file.apk --use-aapt2"
-	#APKTOOL_BUILD_OPTS="--use-aapt2"
+	APKTOOL_BUILD_OPTS="-o file.apk"
 	shift # pop SUBCOMMAND
 	shift # pop SUBCOMMAND_ARG
 	while [[ $# -gt 0 ]]; do
