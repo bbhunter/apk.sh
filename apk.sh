@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# apk.sh v1.1.1
+# apk.sh v1.1.2
 # author: ax - github.com/ax
 #
 # -----------------------------------------------------------------------------
@@ -40,7 +40,7 @@
 # -----------------------------------------------------------------------------
 
 
-VERSION="1.1.1"
+VERSION="1.1.2"
 echo -e "[*] \033[1mapk.sh v$VERSION \033[0m"
 
 APK_SH_HOME="${HOME}/.apk.sh"
@@ -50,8 +50,8 @@ echo "[*] home dir is $APK_SH_HOME"
 supported_arch=("arm" "x86_64" "x86" "arm64")
 
 print_(){
-	:
-	#echo $1
+	#:
+	echo $1
 }
 print_ "[*] DEBUG is TRUE"
 
@@ -285,8 +285,8 @@ apk_patch(){
 	NO_DIS=$6
 	NO_RES=$7
 
-    print_ "NO DIS: $NO_DIS"
-    print_ "NO RES: $NO_RES"
+    print_ "-- NO DIS: $NO_DIS"
+    print_ "-- NO RES: $NO_RES"
 
 	arm=("armeabi" "armeabi-v7a")
 	arm64=("arm64-v8a" "arm64")
@@ -325,6 +325,7 @@ apk_patch(){
 
 	FRIDA_SO_XZ="$APK_SH_HOME/$GADGET"
 	FRIDA_SO="${FRIDA_SO_XZ%???}" # bash 3.x compliant xD
+    print_ "---> $FRIDA_SO"
 
 	if [ ! -f "$FRIDA_SO" ]; then
 		if [ ! -f "$FRIDA_SO_XZ" ]; then
@@ -420,7 +421,7 @@ apk_patch(){
         STATIC_CONSTRUCTOR_FOUND=0;
         for i in "${lines[@]}"
         do
-            # partial_load_library
+            # partial_load_library if class initializer found
             if [[ $i == ".method static constructor <clinit>"* ]]; then
                 STATIC_CONSTRUCTOR_FOUND=1;
                 echo "[>>] A constructor is already present --> ${lines[$index]}"
@@ -453,18 +454,19 @@ apk_patch(){
             ((index++))
         done
         if [[ $STATIC_CONSTRUCTOR_FOUND == 0  ]]; then
-            echo "[!!!!!!] No constructor found!"
-            echo "[!!!!!!] TODO: gonna use the full load library"
-            #arr+=('.method static constructor <clinit>()V')
-            #arr+=('   .locals 1')
-            #arr+=('')
-            #arr+=('   .prologue')
-            #arr+=('   const-string v0, "frida-gadget"')
-            #arr+=('')
-            #arr+=('   invoke-static {v0}, Ljava/lang/System;->loadLibrary(Ljava/lang/String;)V')
-            #arr+=('')
-            #arr+=('   return-void')
-            #arr+=('.end method')
+            echo "[!!!!!!] No class initializer <clinit> found!"
+            echo "[>>] Gonna use the full load library"
+            clinit=('.method static constructor <clinit>()V')
+            clinit+=('   .locals 1')
+            clinit+=('')
+            clinit+=('   .prologue')
+            clinit+=('   const-string v0, "frida-gadget"')
+            clinit+=('')
+            clinit+=('   invoke-static {v0}, Ljava/lang/System;->loadLibrary(Ljava/lang/String;)V')
+            clinit+=('')
+            clinit+=('   return-void')
+            clinit+=('.end method')
+            lines=("${clinit[@]}" "${lines[@]}")
         fi
         echo "[>] Writing the patched smali back..."
         printf "%s\n" "${lines[@]}" > $CLASS_PATH
@@ -541,8 +543,7 @@ apk_pull(){
 			print_ $i
 			APK_NAME=$i
 			APK_DIR=${APK_NAME%.apk} # bash 3.x compliant xD
-			#APKTOOL_DECODE_OPTS="--resource-mode dummy -o $APK_DIR 1>/dev/null"
-			APKTOOL_DECODE_OPTS="-o $APK_DIR 1>/dev/null"
+			APKTOOL_DECODE_OPTS="-resm dummy -o $APK_DIR 1>/dev/null"
 			apk_decode "$APK_NAME" "$APKTOOL_DECODE_OPTS"
 		done
 		# Walk the extracted APKs dirs and copy files and dirs to the base APK dir. 
@@ -680,7 +681,7 @@ if [ ! -z $1 ]&&[ $1 == "build" ]; then
 	#
 	APK_DIR=$2
 	exit_if_not_exist "$APK_DIR"
-	APKTOOL_BUILD_OPTS="-o file.apk"
+	APKTOOL_BUILD_OPTS="-o $APK_DIR-build.apk "
 	shift # pop SUBCOMMAND
 	shift # pop SUBCOMMAND_ARG
 	while [[ $# -gt 0 ]]; do
@@ -748,6 +749,7 @@ elif [ ! -z $1 ]&&[ $1 == "patch" ]; then
 	GADGET_CONF_PATH=""
 	APKTOOL_DECODE_OPTS=""
     NO_DIS=0
+    NO_RES=0
 	exit_if_not_exist "$APK_NAME"
 	shift # pop SUBCOMMAND
 	shift # pop SUBCOMMAND_ARG
