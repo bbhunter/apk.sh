@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# apk.sh v1.1.2
+# apk.sh v1.1.3
 # author: ax - github.com/ax
 #
 # -----------------------------------------------------------------------------
@@ -40,7 +40,7 @@
 # -----------------------------------------------------------------------------
 
 
-VERSION="1.1.2"
+VERSION="1.1.3"
 echo -e "[*] \033[1mapk.sh v$VERSION \033[0m"
 
 APK_SH_HOME="${HOME}/.apk.sh"
@@ -50,8 +50,8 @@ echo "[*] home dir is $APK_SH_HOME"
 supported_arch=("arm" "x86_64" "x86" "arm64")
 
 print_(){
-	#:
-	echo $1
+	:
+	#echo $1
 }
 print_ "[*] DEBUG is TRUE"
 
@@ -293,6 +293,7 @@ apk_patch(){
 	x86=("x86")
 	x86_64=("x86_64")
 	GADGET_VER=`wget https://api.github.com/repos/frida/frida/releases/latest -q -O - | grep -Po "tag_name\": \"\K.*?(?=\")"`
+
 	GADGET_ARM="frida-gadget-$GADGET_VER-android-arm.so.xz"
 	GADGET_ARM64="frida-gadget-$GADGET_VER-android-arm64.so.xz"
 	GADGET_X86_64="frida-gadget-$GADGET_VER-android-x86_64.so.xz"
@@ -342,7 +343,7 @@ apk_patch(){
 	APKTOOL_DECODE_OPTS=$DECODE_OPTS
 	apk_decode "$APK_NAME" "$APKTOOL_DECODE_OPTS"
 
-	echo -e "[>] \033[1mInjecting Frida gadget...\033[0m"
+	echo -e "[>] \033[1mInjecting Frida $GADGET_VER gadget...\033[0m"
 	echo "[>] Placing the Frida shared object for $ARCH...."
 	APK_DIR=${APK_NAME%.apk} # bash 3.x compliant xD
 	mkdir -p "$APK_DIR/lib/$ARCH_DIR/"
@@ -424,8 +425,8 @@ apk_patch(){
             # partial_load_library if class initializer found
             if [[ $i == ".method static constructor <clinit>"* ]]; then
                 STATIC_CONSTRUCTOR_FOUND=1;
-                echo "[>>] A constructor is already present --> ${lines[$index]}"
-                echo "[>>] Injecting partial load library!"
+                echo "[>>] A class initializer is already present --> ${lines[$index]}"
+                echo "[>>] Injecting partial load library in the class initializer..."
                 # Skip  any .locals and write after
                 # Do we have to skip .annotations? is ok to write before them?
                 if [[ ${lines[$index+1]} =~ \.locals* ]]; then
@@ -454,23 +455,35 @@ apk_patch(){
             ((index++))
         done
         if [[ $STATIC_CONSTRUCTOR_FOUND == 0  ]]; then
-            echo "[!!!!!!] No class initializer <clinit> found!"
-            echo "[>>] Gonna use the full load library"
-            clinit=('.method static constructor <clinit>()V')
-            clinit+=('   .locals 1')
-            clinit+=('')
-            clinit+=('   .prologue')
-            clinit+=('   const-string v0, "frida-gadget"')
-            clinit+=('')
-            clinit+=('   invoke-static {v0}, Ljava/lang/System;->loadLibrary(Ljava/lang/String;)V')
-            clinit+=('')
-            clinit+=('   return-void')
-            clinit+=('.end method')
-            lines=("${clinit[@]}" "${lines[@]}")
+            echo "[!!] No class initializer <clinit> found!"
+            echo "[>>] Gonna create a clinit!"
+            index=0
+            for i in "${lines[@]}"
+            do
+                # add clinit before the constructor
+                if [[ $i == ".method"*"constructor <init>"* ]]; then
+                    echo "[>>] A constructor is present --> ${lines[$index]}"
+                    echo "[>>] Injecting class initializer..."
+                    # write above the decompiler comment
+                    arr=("${lines[@]:0:$index-1}") 
+                    clinit=('.method static constructor <clinit>()V')
+                    clinit+=('   .locals 1')
+                    clinit+=('')
+                    clinit+=('   .prologue')
+                    clinit+=('   const-string v0, "frida-gadget"')
+                    clinit+=('')
+                    clinit+=('   invoke-static {v0}, Ljava/lang/System;->loadLibrary(Ljava/lang/String;)V')
+                    clinit+=('')
+                    clinit+=('   return-void')
+                    clinit+=('.end method')
+                    clinit+=('')
+                    lines=("${lines[@]:0:$index-1}" "${clinit[@]}" "${lines[@]:$index-1}")
+                fi
+                ((index++))
+             done
         fi
         echo "[>] Writing the patched smali back..."
         printf "%s\n" "${lines[@]}" > $CLASS_PATH
-
         if [ "$NO_RES" -ne 1 ]; then
             # Add the Internet permission to the manifest if it’s not there already, to permit Frida gadget to open a socket.
             echo "[?] Checking if Internet permission is present in the manifest..."
@@ -600,7 +613,7 @@ apk_pull(){
 			print_ "---"
 			ITER=$(expr $ITER + 1)
 		done
-		echo "[>] - Replace DUMMY_NAME/REAL_NAME in all base.apk xml files containing APKTOOL_DUMMY_"
+		echo "[>] Replace DUMMY_NAME/REAL_NAME in all base.apk xml files containing APKTOOL_DUMMY_"
 		grep -rl "APKTOOL_DUMMY_" --include "*\.xml" $SPLIT_DIR"/base" | xargs sed -i -f $SPLIT_DIR"/DUMMY_REPLACEMENT.txt"
 		rm $SPLIT_DIR"/DUMMY_REPLACEMENT.txt"
 		echo "[>] Done!"
